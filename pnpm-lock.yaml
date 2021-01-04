@@ -17,6 +17,7 @@ devDependencies:
   node-sass: 4.14.1
   prettier: 1.19.1
   sass-loader: 8.0.2_node-sass@4.14.1
+  swiped-events: 1.1.4
   vue-template-compiler: 2.6.12
 lockfileVersion: 5.2
 packages:
@@ -7877,6 +7878,11 @@ packages:
       node: '>=0.10.0'
     resolution:
       integrity: sha512-fpoe2T0RbHwBTBUOftAfBPaDEi06ufaUai0mE6Yn1kacc3SnTErfb/h+X94VXzI64rKFHYImXSvdwGGCmwOqCA==
+  /natives/1.1.6:
+    deprecated: 'This module relies on Node.js''s internals and will break at some point. Do not use it, and update to graceful-fs@4.x.'
+    dev: true
+    resolution:
+      integrity: sha512-6+TDFewD4yxY14ptjKaS63GVdtKiES1pTPyxn9Jb0rBqPMZ7VcCiooEhPNsr+mqHtMGxa/5c/HhcC4uPEUw/nA==
   /natural-compare/1.4.0:
     dev: true
     resolution:
@@ -10649,6 +10655,12 @@ packages:
     hasBin: true
     resolution:
       integrity: sha512-yhy/sQYxR5BkC98CY7o31VGsg014AKLEPxdfhora76l36hD9Rdy5NZA/Ocn6yayNPgSamYdtX2rFJdcv07AYVw==
+  /swiped-events/1.1.4:
+    dependencies:
+      natives: 1.1.6
+    dev: true
+    resolution:
+      integrity: sha512-r7aIa2gjDXYWFP9VgqWIbCxGV6JOoaQ8urLWwNYxdufEW3hr4NwmRQ2WU1qXMVDvxwbn+nF8I2e4nQrl5LwVXQ==
   /symbol-observable/1.0.1:
     dev: true
     engines:
@@ -11859,5 +11871,6 @@ specifiers:
   node-sass: ^4.12.0
   prettier: ^1.19.1
   sass-loader: ^8.0.2
+  swiped-events: ^1.1.4
   vue: ^2.6.11
   vue-template-compiler: ^2.6.11

@@ -174,10 +174,42 @@ export default {
             if (this.handlerFn) {
                 document.removeEventListener('keydown', this.handlerFn);
                 this.handlerFn = undefined;
+
+                document.removeEventListener('swiped', this.handlerFn);
+                this.swipeHandlerFn = undefined;
             }
         },
         setupKeyPresses() {
             if (!this.handlerFn) {
+                this.swipeHandlerFn = (event) => {
+                    if (this.gameIsOver) {
+                        return;
+                    }
+
+                    switch (event.detail.dir) {
+                        case 'left':
+                            this.digLeft();
+                            this.moveLeft();
+                            this.advanceTurn();
+                            break;
+                        case 'right':
+                            this.digRight();
+                            this.moveRight();
+                            this.advanceTurn();
+                            break;
+                        case 'up':
+                            this.digUp();
+                            this.moveUp();
+                            this.advanceTurn();
+                            break;
+                        case 'down':
+                            this.digDown();
+                            this.moveDown();
+                            this.advanceTurn();
+                            break;
+                    }
+                };
+
                 this.handlerFn = (event) => {
                     if (this.gameIsOver) {
                         return;
@@ -208,6 +240,7 @@ export default {
                 };
 
                 document.addEventListener('keydown', this.handlerFn);
+                document.addEventListener('swiped', this.swipeHandlerFn);
             }
         },
         isPlayerCell(x, y) {
