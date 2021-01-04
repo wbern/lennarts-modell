@@ -5,7 +5,7 @@
   "scripts": {
     "serve": "vue-cli-service serve",
     "build": "vue-cli-service build",
-    "deploy": "npm run build && git add --all && git commit -m'Commit dist directory files' && git push && git subtree push --prefix dist origin gh-pages",
+    "deploy": "npm run build && git add --all && (git commit -m'Commit dist directory files' || true) && git push && git subtree push --prefix dist origin gh-pages",
     "test:unit": "vue-cli-service test:unit",
     "test:e2e": "vue-cli-service test:e2e",
     "lint": "vue-cli-service lint"
