@@ -24,14 +24,14 @@
                             !gameWon,
                     }"
                 >
-                    {{ this.playerHealth }}
+                    {{ playerHealth }}
                 </span>
                 <span
                     :class="{
                         'player-health-total': true,
                     }"
                 >
-                    {{ ' / ' + this.healthGoal }}
+                    {{ ' / ' + healthGoal }}
                 </span>
             </div>
             <div class="row" v-for="(rows, y) in world" :key="y">
@@ -43,20 +43,20 @@
                 >
                     {{
                         (isPlayerCell(x, y) ? playerEmoji : '') +
-                        (isPlayerCell(x, y) ? items.map((item) => item.symbol()).join('') : '')
+                        (isPlayerCell(x, y) ? heldItems.map((item) => item.symbol()).join('') : '')
                     }}
                 </div>
             </div>
             <div
-                v-if="this.turns < 3"
+                v-if="
+                    announcementMessage !== '' &&
+                    announcementTurn > turns - turnsToDisplayAnnouncements
+                "
                 :class="{
-                    'introductions-container': true,
+                    'announcement-container': true,
                 }"
             >
-                <p>
-                    Attack things with 😼 using Arrowkeys/Spacebar (or Swipe/Doubletap). Hit the
-                    goal of {{ healthGoal }}!
-                </p>
+                <p>{{ announcementMessage }}</p>
             </div>
         </div>
     </div>
@@ -73,10 +73,37 @@ const itemTypes = {
         symbol() {
             return '🗡️';
         },
+        type: 'sword',
     }),
 };
 
 const npcTypes = {
+    sword: (context) => ({
+        damage: 0,
+        healthBonus: 0,
+        health: 1,
+        gameLimit: 1,
+        type: 'sword',
+        turnCreated: context.turns,
+        onDestroy: () => {
+            context.heldItems.unshift(itemTypes.sword());
+            context.announce('Retrieved 🗡️. Damage is now doubled.');
+        },
+    }),
+    chest: (context) => ({
+        damage: 0,
+        healthBonus: 0,
+        health: 1,
+        gameLimit: 1,
+        type: 'chest',
+        turnCreated: context.turns,
+        shouldCreate: () =>
+            context.heldItems.every((item) => item.type !== 'sword') &&
+            context.npcs.every((npc) => npc.type !== 'sword'),
+        onDestroy: (npc) => {
+            context.addNpc('sword', { x: npc.x, y: npc.y });
+        },
+    }),
     fish: (context) => ({
         damage: 0,
         healthBonus: 10,
@@ -86,6 +113,11 @@ const npcTypes = {
         turnCreated: context.turns,
         speed: 8,
         movePattern: 'fleeing',
+        onDestroy: (npc) => {
+            // the player moves onto the npc, as if it ate it.
+            context.x = npc.x;
+            context.y = npc.y;
+        },
     }),
     monster: (context) => ({
         damage: 4,
@@ -106,22 +138,27 @@ export default {
             new Array(12).fill(1).map(() => ({
                 dug: 1,
                 npcs: [],
+                items: [],
             })),
         ),
         // player-state
         x: null,
         y: null,
-        items: [itemTypes.sword()],
+        heldItems: [],
         playerHealth: 50,
         healthGoal: 100,
         npcs: [],
+        items: [],
         // game-state
         turns: 0,
         playerHealthHistory: [],
+        announcementMessage: '',
+        announcementTurn: 0,
         // game-settings stuff
         initialMonsters: 3,
         playerHungerFactor: 1,
         scoreHistoryEffectTurns: 1,
+        turnsToDisplayAnnouncements: 2,
     }),
     beforeDestroy() {
         this.teardownKeyPresses();
@@ -138,6 +175,9 @@ export default {
         for (let i = 0; i < this.initialMonsters; i++) {
             this.addNpc();
         }
+
+        this.announce(`Attack things with 😼 using Arrowkeys/Spacebar (or Swipe/Doubletap). Hit the
+                    goal of ${this.healthGoal}!`);
 
         window.data = this.$data;
         window.comp = this;
@@ -169,6 +209,10 @@ export default {
         },
     },
     methods: {
+        announce(message) {
+            this.announcementMessage = message;
+            this.announcementTurn = this.turns;
+        },
         setPlayerHealth(newHealth, save = true) {
             if (newHealth < 0) {
                 newHealth = 0;
@@ -187,12 +231,13 @@ export default {
 
             this.playerHealth = newHealth;
         },
-        addNpc(type = 'monster') {
-            const npc = { ...this.getRandomXY(), ...npcTypes[type](this) };
+        addNpc(type = 'monster', customNpcValues = {}) {
+            const npc = { ...this.getRandomXY(), ...npcTypes[type](this), ...customNpcValues };
 
             if (
+                (!!npc.shouldCreate && !npc.shouldCreate()) ||
                 npc.gameLimit <=
-                this.npcs.reduce((count, npc) => (npc.type === type ? count + 1 : count), 0)
+                    this.npcs.reduce((count, npc) => (npc.type === type ? count + 1 : count), 0)
             ) {
                 return;
             }
@@ -282,6 +327,10 @@ export default {
                 this.addNpc('fish');
             }
 
+            if (this.isNth(Math.floor(Math.random() * 3) === 0)) {
+                this.addNpc('chest');
+            }
+
             this.turns++;
         },
         teardownKeyPresses() {
@@ -300,23 +349,23 @@ export default {
 
                     switch (event.key) {
                         case 'ArrowLeft':
-                            this.digLeft();
-                            this.moveLeft();
+                            this.dig('left');
+                            this.moveOrAttack('left');
                             this.advanceTurn();
                             break;
                         case 'ArrowRight':
-                            this.digRight();
-                            this.moveRight();
+                            this.dig('right');
+                            this.moveOrAttack('right');
                             this.advanceTurn();
                             break;
                         case 'ArrowUp':
-                            this.digUp();
-                            this.moveUp();
+                            this.dig('up');
+                            this.moveOrAttack('up');
                             this.advanceTurn();
                             break;
                         case 'ArrowDown':
-                            this.digDown();
-                            this.moveDown();
+                            this.dig('down');
+                            this.moveOrAttack('down');
                             this.advanceTurn();
                             break;
                         case ' ':
@@ -386,11 +435,20 @@ export default {
                 }
 
                 // remove npc from coordinate location
-                const attackItem = this.items.find((item) => item.attack);
+                const attackItem = this.heldItems.find((item) => item.attack);
 
-                attackItem.attack(npc);
+                if (attackItem) {
+                    attackItem.attack(npc);
+                } else {
+                    // fist-fighting monsters, yeah!
+                    npc.health -= 1;
+                }
 
                 if (npc.health <= 0) {
+                    if (npc.onDestroy) {
+                        npc.onDestroy(npc);
+                    }
+
                     // remove all npcs from global collection
                     this.npcs = this.npcs.filter((_npc) => npc !== _npc);
                     return false;
@@ -399,73 +457,56 @@ export default {
             });
         },
         // actions
-        moveUp() {
-            const loc = this.world[this.y - 1]?.[this.x];
+        moveOrAttack(direction) {
+            let newX = this.x;
+            let newY = this.y;
+
+            switch (direction) {
+                case 'up':
+                    newY--;
+                    break;
+                case 'down':
+                    newY++;
+                    break;
+                case 'left':
+                    newX--;
+                    break;
+                case 'right':
+                    newX++;
+                    break;
+            }
+
+            const loc = this.world[newY]?.[newX];
 
             if (loc !== undefined && loc.dug === 0) {
-                this.attackNpc(loc);
-
                 if (loc.npcs.length === 0) {
-                    this.y--;
+                    this.x = newX;
+                    this.y = newY;
+                } else {
+                    this.attackNpc(loc);
                 }
             }
         },
-        moveDown() {
-            const loc = this.world[this.y + 1]?.[this.x];
+        dig(direction) {
+            let newX = this.x;
+            let newY = this.y;
 
-            if (loc !== undefined && loc.dug === 0) {
-                this.attackNpc(loc);
-
-                if (loc.npcs.length === 0) {
-                    this.y++;
-                }
+            switch (direction) {
+                case 'up':
+                    newY--;
+                    break;
+                case 'down':
+                    newY++;
+                    break;
+                case 'left':
+                    newX--;
+                    break;
+                case 'right':
+                    newX++;
+                    break;
             }
-        },
-        moveLeft() {
-            const loc = this.world[this.y]?.[this.x - 1];
 
-            if (loc !== undefined && loc.dug === 0) {
-                this.attackNpc(loc);
-
-                if (loc.npcs.length === 0) {
-                    this.x--;
-                }
-            }
-        },
-        moveRight() {
-            const loc = this.world[this.y]?.[this.x + 1];
-
-            if (loc !== undefined && loc.dug === 0) {
-                this.attackNpc(loc);
-
-                if (loc.npcs.length === 0) {
-                    this.x++;
-                }
-            }
-        },
-        digUp() {
-            const loc = this.world[this.y - 1]?.[this.x];
-
-            if (loc !== undefined && loc.dug > 0) {
-                loc.dug--;
-            }
-        },
-        digDown() {
-            const loc = this.world[this.y + 1]?.[this.x];
-
-            if (loc !== undefined && loc.dug > 0) {
-                loc.dug--;
-            }
-        },
-        digLeft() {
-            const loc = this.world[this.y]?.[this.x - 1];
-
-            if (loc !== undefined && loc.dug > 0) {
-                loc.dug--;
-            }
-        },
-        digRight() {
-            const loc = this.world[this.y]?.[this.x + 1];
+            const loc = this.world[newY]?.[newX];
 
             if (loc !== undefined && loc.dug > 0) {
                 loc.dug--;
@@ -607,7 +648,7 @@ body {
     justify-content: space-around;
 }
 
-.introductions-container {
+.announcement-container {
     position: absolute;
     bottom: 1vh;
     width: 100%;
@@ -668,16 +709,12 @@ body {
     font-size: 2vh;
 
     &--undug {
-        // background: rgba(brown, 0.2);
-
         &:after {
             content: '';
         }
     }
 
     &__npc-fish {
-        // background: rgba(red, 0.6);
-
         &:after {
             content: '🐟';
         }
@@ -685,29 +722,27 @@ body {
         &--right-of-player {
             transform: rotateY(180deg);
         }
-
-        // &--moving {
-        //     filter: hue-rotate(65deg);
-        // }
     }
 
-    // &--player {
-    //     // background: rgba(green, 0.6);
-
-    //     &:after {
-    //         content: '😼';
-    //     }
-    // }
-
     &__npc-monster {
-        // background: rgba(yellow, 0.6);
-
         &:after {
             content: '👾';
         }
 
         &--moving {
             filter: hue-rotate(65deg);
+        }
+    }
+
+    &__npc-sword {
+        &:after {
+            content: '🗡️';
+        }
+    }
+
+    &__npc-chest {
+        &:after {
+            content: '🎁';
         }
     }
 }
