@@ -48,14 +48,14 @@
                 </div>
             </div>
             <div
-                v-if="this.turns === 0"
+                v-if="this.turns < 3"
                 :class="{
                     'introductions-container': true,
                 }"
             >
                 <p>
-                    Hit things with your hungry cat with your arrow keys (or swipe) and hit the goal
-                    of {{ healthGoal }}.
+                    Attack things with 😼 using Arrowkeys/Spacebar (or Swipe/Doubletap). Hit the
+                    goal of {{ healthGoal }}!
                 </p>
             </div>
         </div>
@@ -63,6 +63,8 @@
 </template>
 
 <script>
+import Hammer from 'hammerjs';
+
 const itemTypes = {
     sword: () => ({
         attack(npc) {
@@ -79,6 +81,7 @@ const npcTypes = {
         damage: 0,
         healthBonus: 10,
         health: 1,
+        gameLimit: 10,
         type: 'fish',
         speed: 8,
         movePattern: 'fleeing',
@@ -88,6 +91,7 @@ const npcTypes = {
         healthBonus: 2,
         health: 2,
         type: 'monster',
+        gameLimit: 15,
         speed: 2,
         movePattern: 'hostile',
     }),
@@ -184,6 +188,13 @@ export default {
         addNpc(type = 'monster') {
             const npc = { ...this.getRandomXY(), ...npcTypes[type]() };
 
+            if (
+                npc.gameLimit <=
+                this.npcs.reduce((count, npc) => (npc.type === type ? count + 1 : count), 0)
+            ) {
+                return;
+            }
+
             this.world[npc.y][npc.x].dug = true;
 
             this.npcs.push(npc);
@@ -198,14 +209,19 @@ export default {
             npc.x = newX;
             npc.y = newY;
         },
+        isNth(nth, offset = 0) {
+            return this.turns % nth === offset;
+        },
         advanceNpcs() {
-            const isNth = (nth) => this.turns % nth === 0;
-
             this.npcs.forEach((npc) => {
                 let newX = npc.x;
                 let newY = npc.y;
 
-                if (npc.movePattern !== undefined && npc.speed !== undefined && isNth(npc.speed)) {
+                if (
+                    npc.movePattern !== undefined &&
+                    npc.speed !== undefined &&
+                    this.isNth(npc.speed)
+                ) {
                     if (npc.movePattern === 'hostile') {
                         if (this.x < npc.x) {
                             newX--;
@@ -249,20 +265,18 @@ export default {
                 return;
             }
 
-            const isNth = (nth) => this.turns % nth === 0;
-
-            if (isNth(1)) {
+            if (this.isNth(1)) {
                 // hunger
                 this.setPlayerHealth(this.playerHealth - this.playerHungerFactor, false);
             }
 
             this.advanceNpcs();
 
-            if (isNth(4 + Math.floor(this.turns / 40))) {
+            if (this.isNth(4 + Math.floor(this.turns / 40))) {
                 this.addNpc('monster');
             }
 
-            if (isNth(Math.max(1, 3 - Math.floor(this.turns / 40)))) {
+            if (this.isNth(Math.max(1, 3 - Math.floor(this.turns / 40)))) {
                 this.addNpc('fish');
             }
 
@@ -271,7 +285,8 @@ export default {
         teardownKeyPresses() {
             if (this.handlerFn) {
                 document.removeEventListener('keydown', this.handlerFn);
-                this.handlerFn = undefined;
+
+                this.mc.destroy();
             }
         },
         setupKeyPresses() {
@@ -302,8 +317,34 @@ export default {
                             this.moveDown();
                             this.advanceTurn();
                             break;
+                        case ' ':
+                            this.advanceTurn();
+                            break;
                     }
                 };
+
+                this.mc = new Hammer(this.$el);
+                this.mc.get('swipe').set({ direction: Hammer.DIRECTION_ALL });
+
+                this.mc.on('swipeleft', () => {
+                    this.handlerFn({ key: 'ArrowLeft' });
+                });
+
+                this.mc.on('swiperight', () => {
+                    this.handlerFn({ key: 'ArrowRight' });
+                });
+
+                this.mc.on('swipeup', () => {
+                    this.handlerFn({ key: 'ArrowUp' });
+                });
+
+                this.mc.on('swipedown', () => {
+                    this.handlerFn({ key: 'ArrowDown' });
+                });
+
+                this.mc.on('doubletap', () => {
+                    this.handlerFn({ key: ' ' });
+                });
 
                 document.addEventListener('keydown', this.handlerFn);
             }
@@ -321,12 +362,16 @@ export default {
             const foundNpc = this.npcs.find((npc) => npc.x === x && npc.y === y);
 
             if (foundNpc) {
-                classes['cell--npc-' + foundNpc.type] = true;
+                classes['cell__npc-' + foundNpc.type] = true;
+
+                if (this.isNth(foundNpc.speed)) {
+                    classes['cell__npc-' + foundNpc.type + '--moving'] = true;
+                }
 
                 if (foundNpc.x < this.x) {
-                    classes['cell--npc-' + foundNpc.type + '-left-of-player'] = true;
+                    classes['cell__npc-' + foundNpc.type + '--left-of-player'] = true;
                 } else if (foundNpc.x > this.x) {
-                    classes['cell--npc-' + foundNpc.type + '-right-of-player'] = true;
+                    classes['cell__npc-' + foundNpc.type + '--right-of-player'] = true;
                 }
             }
 
@@ -425,11 +470,24 @@ export default {
             }
         },
         // game-stuff
-        getRandomXY() {
-            return {
+        getRandomXY(requiredDistanceFromPlayer = 2) {
+            const randomize = () => ({
                 x: Math.floor(Math.random() * 12),
                 y: Math.floor(Math.random() * 12),
-            };
+            });
+
+            const isWithinPlayerDistance = (x, y) =>
+                (x <= this.x - requiredDistanceFromPlayer ||
+                    x >= this.x + requiredDistanceFromPlayer) &&
+                (y <= this.y - requiredDistanceFromPlayer ||
+                    y >= this.y + requiredDistanceFromPlayer);
+
+            let result;
+            do {
+                result = randomize();
+            } while (requiredDistanceFromPlayer > 0 && !isWithinPlayerDistance(result.x, result.y));
+
+            return result;
         },
     },
     components: {},
@@ -615,16 +673,20 @@ body {
         }
     }
 
-    &--npc-fish {
+    &__npc-fish {
         // background: rgba(red, 0.6);
 
         &:after {
             content: '🐟';
         }
 
-        &-right-of-player {
+        &--right-of-player {
             transform: rotateY(180deg);
         }
+
+        // &--moving {
+        //     filter: hue-rotate(65deg);
+        // }
     }
 
     // &--player {
@@ -635,11 +697,15 @@ body {
     //     }
     // }
 
-    &--npc-monster {
+    &__npc-monster {
         // background: rgba(yellow, 0.6);
 
         &:after {
             content: '👾';
+        }
+
+        &--moving {
+            filter: hue-rotate(65deg);
         }
     }
 }
