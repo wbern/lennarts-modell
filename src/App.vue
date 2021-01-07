@@ -77,21 +77,23 @@ const itemTypes = {
 };
 
 const npcTypes = {
-    fish: () => ({
+    fish: (context) => ({
         damage: 0,
         healthBonus: 10,
         health: 1,
         gameLimit: 10,
         type: 'fish',
+        turnCreated: context.turns,
         speed: 8,
         movePattern: 'fleeing',
     }),
-    monster: () => ({
+    monster: (context) => ({
         damage: 4,
         healthBonus: 2,
         health: 2,
         type: 'monster',
         gameLimit: 15,
+        turnCreated: context.turns,
         speed: 2,
         movePattern: 'hostile',
     }),
@@ -186,7 +188,7 @@ export default {
             this.playerHealth = newHealth;
         },
         addNpc(type = 'monster') {
-            const npc = { ...this.getRandomXY(), ...npcTypes[type]() };
+            const npc = { ...this.getRandomXY(), ...npcTypes[type](this) };
 
             if (
                 npc.gameLimit <=
@@ -209,8 +211,8 @@ export default {
             npc.x = newX;
             npc.y = newY;
         },
-        isNth(nth, offset = 0) {
-            return this.turns % nth === offset;
+        isNth(nth, turns = this.turns, offset = 0) {
+            return turns % nth === offset;
         },
         advanceNpcs() {
             this.npcs.forEach((npc) => {
@@ -220,7 +222,7 @@ export default {
                 if (
                     npc.movePattern !== undefined &&
                     npc.speed !== undefined &&
-                    this.isNth(npc.speed)
+                    this.isNth(npc.speed, this.turns - npc.turnCreated)
                 ) {
                     if (npc.movePattern === 'hostile') {
                         if (this.x < npc.x) {
@@ -272,7 +274,7 @@ export default {
 
             this.advanceNpcs();
 
-            if (this.isNth(4 + Math.floor(this.turns / 40))) {
+            if (this.isNth(5 + Math.floor(this.turns / 40))) {
                 this.addNpc('monster');
             }
 
@@ -364,7 +366,7 @@ export default {
             if (foundNpc) {
                 classes['cell__npc-' + foundNpc.type] = true;
 
-                if (this.isNth(foundNpc.speed)) {
+                if (this.isNth(foundNpc.speed, this.turns - foundNpc.turnCreated)) {
                     classes['cell__npc-' + foundNpc.type + '--moving'] = true;
                 }
 
