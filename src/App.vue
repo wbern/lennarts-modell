@@ -66,14 +66,22 @@
 import Hammer from 'hammerjs';
 
 const itemTypes = {
-    sword: () => ({
+    sword: (context) => ({
         attack(npc) {
             npc.health -= 2;
+            this.health--;
+
+            if (this.health === 0) {
+                context.heldItems = context.heldItems.filter((item) => item !== this);
+
+                context.announce('Your 🗡️ broke!')
+            }
         },
         symbol() {
             return '🗡️';
         },
         type: 'sword',
+        health: 4,
     }),
 };
 
@@ -86,7 +94,7 @@ const npcTypes = {
         type: 'sword',
         turnCreated: context.turns,
         onDestroy: () => {
-            context.heldItems.unshift(itemTypes.sword());
+            context.heldItems.unshift(itemTypes.sword(context));
             context.announce('Retrieved 🗡️. Damage is now doubled.');
         },
     }),
@@ -195,7 +203,7 @@ export default {
                 return '🐱';
             } else if (this.playerHealth < 15) {
                 return '😾';
-            } else if (this.playerHealth > 100) {
+            } else if (this.playerHealth >= 100) {
                 return '😺';
             }
 
