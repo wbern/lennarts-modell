@@ -83,6 +83,28 @@ const itemTypes = {
         type: 'sword',
         health: 4,
     }),
+    pick: (context) => ({
+        attack(npc) {
+            if (npc.type === 'dirt' || npc.type === 'wall') {
+                npc.health = 0;
+            } else {
+                npc.health--;
+            }
+
+            this.health--;
+
+            if (this.health === 0) {
+                context.heldItems = context.heldItems.filter((item) => item !== this);
+
+                context.announce('Your ⛏️ broke!');
+            }
+        },
+        symbol() {
+            return '⛏️';
+        },
+        type: 'pick',
+        health: 12,
+    }),
 };
 
 const npcTypes = {
@@ -101,6 +123,21 @@ const npcTypes = {
             context.y = npc.y;
         },
     }),
+    pick: (context) => ({
+        damage: 0,
+        healthBonus: 0,
+        health: 1,
+        gameLimit: 1,
+        type: 'pick',
+        turnCreated: context.turns,
+        onDestroy: (npc) => {
+            context.heldItems.unshift(itemTypes.pick(context));
+            context.announce('Retrieved ⛏️. You can now dig through everything!');
+
+            context.x = npc.x;
+            context.y = npc.y;
+        },
+    }),
     chest: (context) => ({
         damage: 0,
         healthBonus: 0,
@@ -109,10 +146,13 @@ const npcTypes = {
         type: 'chest',
         turnCreated: context.turns,
         shouldCreate: () =>
-            context.heldItems.every((item) => item.type !== 'sword') &&
-            context.npcs.every((npc) => npc.type !== 'sword'),
+            context.heldItems.length === 0 &&
+            context.npcs.every((npc) => npc.type !== 'sword' && npc.type !== 'pick'),
         onDestroy: (npc) => {
-            context.addNpc('sword', { x: npc.x, y: npc.y });
+            context.addNpc(Math.floor(Math.random() * 2) ? 'sword' : 'pick', {
+                x: npc.x,
+                y: npc.y,
+            });
         },
     }),
     fish: (context) => ({
@@ -142,14 +182,24 @@ const npcTypes = {
     }),
     dirt: (context) => ({
         healthBonus: 0,
-        health: 1,
+        health: 2,
         type: 'dirt',
         turnCreated: context.turns,
+        onDestroy: (npc) => {
+            // the player moves onto the npc, as if it ate it.
+            context.x = npc.x;
+            context.y = npc.y;
+        },
     }),
     wall: (context) => ({
         health: Math.infinity,
         type: 'wall',
         turnCreated: context.turns,
+        onDestroy: (npc) => {
+            // the player moves onto the npc, as if it ate it.
+            context.x = npc.x;
+            context.y = npc.y;
+        },
     }),
 };
 
@@ -485,6 +535,10 @@ export default {
 
                 if (this.isNth(foundNpc.speed, this.turns - foundNpc.turnCreated)) {
                     classes['cell__npc-' + foundNpc.type + '--moving'] = true;
+                }
+
+                if (foundNpc.health !== Math.infinity) {
+                    classes['cell__npc-' + foundNpc.type + '-health--' + foundNpc.health] = true;
                 }
 
                 if (foundNpc.x < this.x) {
@@ -833,6 +887,12 @@ body {
         }
     }
 
+    &__npc-pick {
+        &:after {
+            content: '⛏️';
+        }
+    }
+
     &__npc-wall {
         background: rgba(50, 50, 50, 1);
     }
@@ -840,6 +900,10 @@ body {
     &__npc-dirt {
         border: 2px solid rgb(53, 36, 32);
         background: rgb(53, 36, 32);
+
+        &-health--1 {
+            opacity: 0.5;
+        }
     }
 
     &__npc-chest {
