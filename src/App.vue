@@ -140,6 +140,17 @@ const npcTypes = {
         speed: 2,
         movePattern: 'hostile',
     }),
+    dirt: (context) => ({
+        healthBonus: 0,
+        health: 1,
+        type: 'dirt',
+        turnCreated: context.turns,
+    }),
+    wall: (context) => ({
+        health: Math.infinity,
+        type: 'wall',
+        turnCreated: context.turns,
+    }),
 };
 
 export default {
@@ -166,6 +177,8 @@ export default {
         announcementTurn: 0,
         // game-settings stuff
         initialMonsters: 3,
+        initialWallSections: 10,
+        initialDirtSections: 15,
         playerHungerFactor: 1,
         scoreHistoryEffectTurns: 1,
         turnsToDisplayAnnouncements: 2,
@@ -183,7 +196,15 @@ export default {
         this.setupKeyPresses();
 
         for (let i = 0; i < this.initialMonsters; i++) {
-            this.addNpc();
+            this.addNpc('monster');
+        }
+
+        for (let i = 0; i < this.initialWallSections; i++) {
+            this.addLineOfNpcs('wall');
+        }
+
+        for (let i = 0; i < this.initialDirtSections; i++) {
+            this.addLineOfNpcs('dirt');
         }
 
         this.announce(`Attack things with 😼 using Arrowkeys/Spacebar (or Swipe/Doubletap). Hit the
@@ -219,6 +240,38 @@ export default {
         },
     },
     methods: {
+        addLineOfNpcs(type) {
+            const rand = this.getRandomXY();
+
+            let xMove = 0;
+            let yMove = 0;
+
+            if (Math.floor(Math.random() * 2) === 0) {
+                xMove = Math.floor(Math.random() * 2) ? 1 : -1;
+            } else {
+                yMove = Math.floor(Math.random() * 2) ? 1 : -1;
+            }
+
+            const wallLength = Math.floor(Math.random() * 7);
+            for (let j = 0; j < wallLength; j++) {
+                const xMod = xMove * j;
+                const yMod = yMove * j;
+
+                if (
+                    !this.withinGameArea(rand.x + xMod, rand.y + yMod) ||
+                    !this.isFarAwayEnoughFromPlayer(rand.x + xMod, rand.y + yMod, 1) ||
+                    !this.isFarAwayEnoughFromNpcs(rand.x + xMod, rand.y + yMod, 1)
+                ) {
+                    // stop generating this wall
+                    break;
+                }
+
+                this.addNpc(type, { x: rand.x + xMod, y: rand.y + yMod });
+            }
+        },
+        withinGameArea(x, y) {
+            return !!this.world[y]?.[x];
+        },
         announce(message) {
             this.announcementMessage = message;
             this.announcementTurn = this.turns;
@@ -241,7 +294,11 @@ export default {
 
             this.playerHealth = newHealth;
         },
-        addNpc(type = 'monster', customNpcValues = {}) {
+        addNpc(type, customNpcValues = {}) {
+            if (!npcTypes[type]) {
+                throw new Error('Invalid NPC type: ' + type);
+            }
+
             try {
                 const npc = { ...this.getRandomXY(), ...npcTypes[type](this), ...customNpcValues };
 
@@ -499,26 +556,29 @@ export default {
             }
         },
         // game-stuff
-        getRandomXY(requiredDistanceFromPlayer = 2, requiredDistanceFromNpcs = 3) {
+        isFarAwayEnoughFromPlayer(x, y, requiredDistance) {
+            return (
+                x <= this.x - requiredDistance ||
+                x >= this.x + requiredDistance ||
+                y <= this.y - requiredDistance ||
+                y >= this.y + requiredDistance
+            );
+        },
+        isFarAwayEnoughFromNpcs(x, y, requiredDistance) {
+            return this.npcs.every(
+                (npc) =>
+                    x <= npc.x - requiredDistance ||
+                    x >= npc.x + requiredDistance ||
+                    y <= npc.y - requiredDistance ||
+                    y >= npc.y + requiredDistance,
+            );
+        },
+
+        getRandomXY(requiredDistanceFromPlayer = 2, requiredDistanceFromNpcs = 1) {
             const randomize = () => ({
                 x: Math.floor(Math.random() * 12),
                 y: Math.floor(Math.random() * 12),
             });
-
-            const isWithinPlayerDistance = (x, y) =>
-                (x <= this.x - requiredDistanceFromPlayer ||
-                    x >= this.x + requiredDistanceFromPlayer) &&
-                (y <= this.y - requiredDistanceFromPlayer ||
-                    y >= this.y + requiredDistanceFromPlayer);
-
-            const isWithinNpcsDistance = (x, y) =>
-                this.npcs.every(
-                    (npc) =>
-                        (x <= npc.x - requiredDistanceFromNpcs ||
-                            x >= npc.x + requiredDistanceFromNpcs) &&
-                        (y <= npc.y - requiredDistanceFromNpcs ||
-                            y >= npc.y + requiredDistanceFromNpcs),
-                );
 
             const maxAttempts = 50;
             let attempts = 0;
@@ -543,8 +603,13 @@ export default {
 
                 if (
                     (requiredDistanceFromPlayer > 0 &&
-                        !isWithinPlayerDistance(result.x, result.y)) ||
-                    (requiredDistanceFromNpcs > 0 && !isWithinNpcsDistance(result.x, result.y))
+                        !this.isFarAwayEnoughFromPlayer(
+                            result.x,
+                            result.y,
+                            requiredDistanceFromPlayer,
+                        )) ||
+                    (requiredDistanceFromNpcs > 0 &&
+                        !this.isFarAwayEnoughFromNpcs(result.x, result.y, requiredDistanceFromNpcs))
                 ) {
                     result = null;
                 }
@@ -554,7 +619,8 @@ export default {
                 return result;
             }
 
-            // this is basically super rare.
+            // this should be extremely rare since we even lower the required distance
+            // during generation if we cannot randomize good coordinates
             const e = new Error(
                 'Failed to generate a suitable position after ' +
                     attempts * (retries + 1) +
@@ -765,6 +831,15 @@ body {
         &:after {
             content: '🗡️';
         }
+    }
+
+    &__npc-wall {
+        background: rgba(50, 50, 50, 1);
+    }
+
+    &__npc-dirt {
+        border: 2px solid rgb(53, 36, 32);
+        background: rgb(53, 36, 32);
     }
 
     &__npc-chest {
