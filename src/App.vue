@@ -227,7 +227,7 @@ export default {
         announcementTurn: 0,
         // game-settings stuff
         initialMonsters: 3,
-        initialWallSections: 10,
+        initialWallSections: 5,
         initialDirtSections: 15,
         playerHungerFactor: 1,
         scoreHistoryEffectTurns: 1,
