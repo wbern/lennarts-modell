@@ -74,7 +74,7 @@ const itemTypes = {
             if (this.health === 0) {
                 context.heldItems = context.heldItems.filter((item) => item !== this);
 
-                context.announce('Your 🗡️ broke!')
+                context.announce('Your 🗡️ broke!');
             }
         },
         symbol() {
@@ -93,9 +93,12 @@ const npcTypes = {
         gameLimit: 1,
         type: 'sword',
         turnCreated: context.turns,
-        onDestroy: () => {
+        onDestroy: (npc) => {
             context.heldItems.unshift(itemTypes.sword(context));
             context.announce('Retrieved 🗡️. Damage is now doubled.');
+
+            context.x = npc.x;
+            context.y = npc.y;
         },
     }),
     chest: (context) => ({
@@ -144,7 +147,6 @@ export default {
     data: () => ({
         world: new Array(12).fill(1).map(() =>
             new Array(12).fill(1).map(() => ({
-                dug: 1,
                 npcs: [],
                 items: [],
             })),
@@ -172,7 +174,7 @@ export default {
         this.teardownKeyPresses();
     },
     beforeMount() {
-        const rand = this.getRandomXY();
+        const rand = this.getRandomXY(0, 0);
 
         this.x = rand.x;
         this.y = rand.y;
@@ -240,20 +242,26 @@ export default {
             this.playerHealth = newHealth;
         },
         addNpc(type = 'monster', customNpcValues = {}) {
-            const npc = { ...this.getRandomXY(), ...npcTypes[type](this), ...customNpcValues };
+            try {
+                const npc = { ...this.getRandomXY(), ...npcTypes[type](this), ...customNpcValues };
 
-            if (
-                (!!npc.shouldCreate && !npc.shouldCreate()) ||
-                npc.gameLimit <=
-                    this.npcs.reduce((count, npc) => (npc.type === type ? count + 1 : count), 0)
-            ) {
-                return;
+                if (
+                    (!!npc.shouldCreate && !npc.shouldCreate()) ||
+                    npc.gameLimit <=
+                        this.npcs.reduce((count, npc) => (npc.type === type ? count + 1 : count), 0)
+                ) {
+                    return;
+                }
+
+                this.npcs.push(npc);
+                this.world[npc.y][npc.x].npcs.push(npc);
+            } catch (e) {
+                if (e.code !== 'NO_VALID_POSITION') {
+                    // that's fine
+                    return;
+                }
+                throw e;
             }
-
-            this.world[npc.y][npc.x].dug = true;
-
-            this.npcs.push(npc);
-            this.world[npc.y][npc.x].npcs.push(npc);
         },
         setNpcPosition(npc, newX = npc.x, newY = npc.y) {
             this.world[npc.y][npc.x].npcs = this.world[npc.y][npc.x].npcs.filter(
@@ -357,22 +365,18 @@ export default {
 
                     switch (event.key) {
                         case 'ArrowLeft':
-                            this.dig('left');
                             this.moveOrAttack('left');
                             this.advanceTurn();
                             break;
                         case 'ArrowRight':
-                            this.dig('right');
                             this.moveOrAttack('right');
                             this.advanceTurn();
                             break;
                         case 'ArrowUp':
-                            this.dig('up');
                             this.moveOrAttack('up');
                             this.advanceTurn();
                             break;
                         case 'ArrowDown':
-                            this.dig('down');
                             this.moveOrAttack('down');
                             this.advanceTurn();
                             break;
@@ -413,7 +417,6 @@ export default {
         },
         cellClasses(cell, x, y) {
             const classes = {
-                'cell--undug': cell.dug > 0,
                 'cell--player': x === this.x && y === this.y,
                 'cell--dead-player': x === this.x && y === this.y && this.gameLost,
             };
@@ -486,7 +489,7 @@ export default {
 
             const loc = this.world[newY]?.[newX];
 
-            if (loc !== undefined && loc.dug === 0) {
+            if (loc !== undefined) {
                 if (loc.npcs.length === 0) {
                     this.x = newX;
                     this.y = newY;
@@ -495,33 +498,8 @@ export default {
                 }
             }
         },
-        dig(direction) {
-            let newX = this.x;
-            let newY = this.y;
-
-            switch (direction) {
-                case 'up':
-                    newY--;
-                    break;
-                case 'down':
-                    newY++;
-                    break;
-                case 'left':
-                    newX--;
-                    break;
-                case 'right':
-                    newX++;
-                    break;
-            }
-
-            const loc = this.world[newY]?.[newX];
-
-            if (loc !== undefined && loc.dug > 0) {
-                loc.dug--;
-            }
-        },
         // game-stuff
-        getRandomXY(requiredDistanceFromPlayer = 2) {
+        getRandomXY(requiredDistanceFromPlayer = 2, requiredDistanceFromNpcs = 3) {
             const randomize = () => ({
                 x: Math.floor(Math.random() * 12),
                 y: Math.floor(Math.random() * 12),
@@ -533,12 +511,59 @@ export default {
                 (y <= this.y - requiredDistanceFromPlayer ||
                     y >= this.y + requiredDistanceFromPlayer);
 
+            const isWithinNpcsDistance = (x, y) =>
+                this.npcs.every(
+                    (npc) =>
+                        (x <= npc.x - requiredDistanceFromNpcs ||
+                            x >= npc.x + requiredDistanceFromNpcs) &&
+                        (y <= npc.y - requiredDistanceFromNpcs ||
+                            y >= npc.y + requiredDistanceFromNpcs),
+                );
+
+            const maxAttempts = 50;
+            let attempts = 0;
+            let retries = 0;
+
             let result;
             do {
                 result = randomize();
-            } while (requiredDistanceFromPlayer > 0 && !isWithinPlayerDistance(result.x, result.y));
+                attempts++;
 
-            return result;
+                if (attempts === maxAttempts && requiredDistanceFromNpcs > 1) {
+                    requiredDistanceFromNpcs--;
+                    retries++;
+                    attempts = 0;
+                }
+
+                if (attempts === maxAttempts && requiredDistanceFromPlayer > 1) {
+                    requiredDistanceFromPlayer--;
+                    retries++;
+                    attempts = 0;
+                }
+
+                if (
+                    (requiredDistanceFromPlayer > 0 &&
+                        !isWithinPlayerDistance(result.x, result.y)) ||
+                    (requiredDistanceFromNpcs > 0 && !isWithinNpcsDistance(result.x, result.y))
+                ) {
+                    result = null;
+                }
+            } while (!result && attempts < maxAttempts);
+
+            if (result) {
+                return result;
+            }
+
+            // this is basically super rare.
+            const e = new Error(
+                'Failed to generate a suitable position after ' +
+                    attempts * (retries + 1) +
+                    ' attempts (with ' +
+                    retries +
+                    ' retries, lowering required distances from other things)',
+            );
+            e.code = 'NO_VALID_POSITION';
+            throw e;
         },
     },
     components: {},
@@ -715,12 +740,6 @@ body {
     padding: 5px;
 
     font-size: 2vh;
-
-    &--undug {
-        &:after {
-            content: '';
-        }
-    }
 
     &__npc-fish {
         &:after {
