@@ -5,7 +5,7 @@
   "scripts": {
     "serve": "vue-cli-service serve",
     "build": "vue-cli-service build",
-    "deploy": "npm run build && cp -r dist docs && git add --all && (git commit -m'Commit docs directory' || true) && git push",
+    "deploy": "npm run build && cp -r dist docs && git add --all && (git commit -m'Update docs directory' || true) && git push",
     "test:unit": "vue-cli-service test:unit",
     "test:e2e": "vue-cli-service test:e2e",
     "lint": "vue-cli-service lint"
